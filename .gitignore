@@ -1,0 +1,5 @@
+# Ignore folder
+app/
+
+# Ignore large trained models
+.h5

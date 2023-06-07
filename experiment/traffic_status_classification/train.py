@@ -35,7 +35,7 @@ def create_model(chosen_model):
     
     name = 'traffic_status'
     
-    if chosen_model == 'AlexNet':
+    if chosen_model == 'AlexNet_simplified':
         name += '_mini_AlexNet'
         
         x = Conv2D(filters=64, kernel_size=(5, 5), strides=(1, 1), padding='same', name="conv1", activation="relu")(model_input)
@@ -55,6 +55,49 @@ def create_model(chosen_model):
         x = Dense(n_outputs, activation='softmax', name="fc5")(x)
 
         base_model = Model(inputs=model_input, outputs=x)
+        base_model.load_weights("alexnet_weights.h5", by_name=True)
+
+    elif chosen_model == 'AlexNet_full':
+        name += '_original_AlexNet'
+
+        x = Conv2D(filters=96, kernel_size=(11, 11), strides=(4, 4), name="conv1", activation="relu")(model_input)
+        x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), name="pool1")(x)
+        x = BatchNormalization()(x)
+
+        x = ZeroPadding2D((2, 2))(x)
+        con2_split1 = Lambda(lambda z: z[:,:,:,:48])(x)
+        con2_split2 = Lambda(lambda z: z[:,:,:,48:])(x)
+        x = Concatenate(axis=1)([con2_split1, con2_split2])
+        x = Conv2D(filters=256, kernel_size=(5, 5), strides=(1, 1), name="conv2", activation="relu")(x)
+        x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), name="pool2")(x)
+        x = BatchNormalization()(x)
+
+        x = ZeroPadding2D((1, 1))(x)
+        x = Conv2D(filters=384, kernel_size=(3, 3), strides=(1, 1), name="conv3", activation="relu")(x)
+        
+        x = ZeroPadding2D((1, 1))(x)
+        con4_split1 = Lambda(lambda z: z[:,:,:,:192])(x)
+        con4_split2 = Lambda(lambda z: z[:,:,:,192:])(x)
+        x = Concatenate(axis=1)([con4_split1, con4_split2])
+        x = Conv2D(filters=384, kernel_size=(3, 3), strides=(1, 1), name="conv4", activation="relu")(x)
+
+        x = ZeroPadding2D((1, 1))(x)
+        con5_split1 = Lambda(lambda z: z[:,:,:,:192])(x)
+        con5_split2 = Lambda(lambda z: z[:,:,:,192:])(x)
+        x = Concatenate(axis=1)([con5_split1, con5_split2])
+        x = Conv2D(filters=256, kernel_size=(3, 3), strides=(1, 1), name="conv5", activation="relu")(x)
+        
+        x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), name="pool5")(x)
+        x = Flatten()(x)
+        
+        x = Dense(2048, activation='relu', name="fc6")(x)
+        x = Dropout(0.5, name="droupout6")(x)
+        x = Dense(2048, activation='relu', name="fc7")(x)
+        x = Dropout(0.5, name="droupout7")(x)
+        x = Dense(n_outputs, activation='softmax', name="fc8")(x)
+
+        base_model = Model(inputs=model_input, outputs=x)
+        base_model.load_weights("alexnet_weights.h5", by_name=True)
     
     elif chosen_model == 'LeNet5':
         name += '_modified_LeNet5'
@@ -106,9 +149,9 @@ def create_model(chosen_model):
 
 if __name__ == "__main__":
     # Choose a model's name
-    # Available models: ['AlexNet', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50']
+    # Available models: ['AlexNet_simplified', 'AlexNet_full', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50']
     
-    avail_model = ['AlexNet', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50']
+    avail_model = ['AlexNet_simplified', 'AlexNet_full', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50']
     
     # Getting data ready    
     df = pd.read_csv('out.csv', sep=',', header=None)
