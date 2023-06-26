@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import re
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 import sys
 import tensorflow as tf
 from tensorflow.keras.applications.inception_v3 import InceptionV3
@@ -18,8 +19,10 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.utils import to_categorical
 
 
-data_dir = r'F:/Bip/DATN/experiment/dataset_test/all_resized'
+data_dir = r'D:/Working/traffic_status/experiment/dataset/all_resized'
 
+# Hide GPU from visible devices
+#tf.config.set_visible_devices([], 'GPU')
 
 # %% Define base model for transfer learning
 
@@ -97,8 +100,7 @@ def create_model(chosen_model):
         x = Dense(n_outputs, activation='softmax', name="fc8")(x)
 
         base_model = Model(inputs=model_input, outputs=x)
-        base_model.load_weights("alexnet_weights.h5", by_name=True)
-    
+        base_model.load_weights("alexnet_weights.h5", by_name=True)    
     elif chosen_model == 'LeNet5':
         name += '_modified_LeNet5'
         
@@ -124,24 +126,29 @@ def create_model(chosen_model):
     else:
         if chosen_model == 'InceptionV3':
             name += '_InceptionV3'
-            pretrained_model = InceptionV3(weights='imagenet', include_top=False)
+            pretrained_model = InceptionV3(input_shape=(360, 640, 3), weights='imagenet', include_top=False)
             
         if chosen_model == 'MobileNetV2':
             name += '_MobileNetV2'
-            pretrained_model = MobileNetV2(weights='imagenet', include_top=False)
+            pretrained_model = MobileNetV2(input_shape=(360, 640, 3), weights='imagenet', include_top=False)
         
         if chosen_model == 'ResNet50':
             name += '_ResNet50'
-            pretrained_model = ResNet50(weights='imagenet', include_top=False)
+            pretrained_model = ResNet50(input_shape=(360, 640, 3), weights='imagenet', include_top=False)
+
+        if chosen_model == 'VGG19':
+            name += '_VGG19'
+            pretrained_model = VGG19(input_shape=(360, 640, 3), weights='imagenet', include_top=False)
 
         pretrained_model.trainable = False
 
-        x = pretrained_model(pretrained_model.output)
+        x = pretrained_model.output
         x = GlobalAveragePooling2D()(x)
-        x = Dropout(0.5)(x)
-        x = Dense(n_outputs)(x)
+        x = Dropout(0.3)(x)
+        x = Dense(1024, activation='relu')(x)
+        x = Dense(n_outputs, activation='softmax')(x)
 
-        base_model = Model(inputs=model_input, outputs=x)
+        base_model = Model(inputs=pretrained_model.input, outputs=x)
         
     return base_model, name
 
@@ -149,47 +156,52 @@ def create_model(chosen_model):
 
 if __name__ == "__main__":
     # Choose a model's name
-    # Available models: ['AlexNet_simplified', 'AlexNet_full', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50']
+    # Available models: ['AlexNet_simplified', 'AlexNet_full', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50', 'VGG19']
     
-    avail_model = ['AlexNet_simplified', 'AlexNet_full', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50']
+    avail_model = ['AlexNet_simplified', 'AlexNet_full', 'LeNet5', 'InceptionV3', 'MobileNetV2', 'ResNet50', 'VGG19']
     
-    # Getting data ready    
-    df = pd.read_csv('out.csv', sep=',', header=None)
+    # Getting data ready
+    training_image_dir = 'D:/Working/TLU/traffic_status/experiment/dataset/all_resized/' 
+    
+    df = pd.read_csv('out_fewer.csv', sep=',', header=None)
     
     X, y_temp = [], []
     
     # Ignore the df header
     for i in range(1, len(df.iloc[:,0])):
-        X.append(cv2.imread(os.path.join(data_dir, df.iloc[:,1][i])))
+        X.append(cv2.imread(os.path.join(training_image_dir, df.iloc[:,1][i])))
         y_temp.append(ast.literal_eval(df.iloc[:,2][i]))
     
     # Prepare correct format for the input features X 
     X = np.array(X)
-
-    # Fewer dataset
-    X = X[:400]
     
     # Prepare correct format for the output label y (as one-hot vector)
     y_temp = np.array(y_temp)
     y = np.zeros((y_temp.size, y_temp.max() + 1))
     y[np.arange(y_temp.size), y_temp] = 1
     
+    # Split test train
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    
     # Model selection with an iterator
     it = 0
     model, saved_name = create_model(avail_model[it])
-
     
-    opt = tf.keras.optimizers.SGD(learning_rate=1e-3, momentum=0.9)
+    #model.summary()
+
+    if it < 3:
+        opt = tf.keras.optimizers.SGD(learning_rate=1e-3)
+    else:
+        opt = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    
     model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
     
     # Training
-    history = model.fit(X, y, epochs=50)
+    history = model.fit(X_train, y_train, epochs=250, batch_size=2)
     
-    '''
     # Saving trained model 
     h5_file_name = saved_name + '.h5'
     model.save(h5_file_name)
-    '''
-       
-    # Load the saved model - use ONLY when inference (not to re-train again/call specific saved model)
+
+    # Load the saved model - use ONLY when inference (not to re-train again/call specific saved model), for example
     # model = tf.keras.models.load_model("traffic_status_AlexNet.h5")
